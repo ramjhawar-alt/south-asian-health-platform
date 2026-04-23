@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+:root {
+  /* Surfaces */
+  --background: #fefbf3;
+  --foreground: #1a1523;
+  --card: #ffffff;
+  --card-border: #e5e0d5;
+
+  /* Primary — deep indigo (authority, medical trust) */
+  --primary: #3730a3;
+  --primary-hover: #2e278a;
+  --primary-foreground: #ffffff;
+
+  /* Saffron — distinctly Indian accent, used for CTAs & highlights */
+  --saffron: #e07b0d;
+  --saffron-hover: #c96a0a;
+
+  /* Muted */
+  --muted: #f4f0e8;
+  --muted-foreground: #7c7068;
+
+  /* Accent (light saffron wash) */
+  --accent: #fff8ed;
+  --accent-border: #f5c07a;
+
+  /* Semantic */
+  --success: #0d9488;
+  --success-bg: #f0fdfa;
+  --success-border: #99f6e4;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+
+  /* Sidebar — light, matches main frame */
+  --sidebar-bg: #ffffff;
+  --sidebar-fg: #1a1523;
+  --sidebar-muted: #a89e96;
+  --sidebar-active: #eef2ff;
+  --sidebar-active-border: #a5b4fc;
+  --sidebar-hover: #f4f0e8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdc5ba;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a89e96;
+}
+
+/* Prose-like text rendering in chat answers */
+.chat-answer {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+.chat-answer h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.25rem;
+}
+.chat-answer h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  color: var(--foreground);
+}
+.chat-answer p {
+  margin-bottom: 0.75rem;
+}
+.chat-answer p:last-child {
+  margin-bottom: 0;
+}
+.chat-answer ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.chat-answer ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.chat-answer li {
+  margin-bottom: 0.3rem;
+  line-height: 1.65;
+}
+.chat-answer strong {
+  font-weight: 700;
+  color: var(--primary);
+}
+.chat-answer em {
+  font-style: italic;
+}

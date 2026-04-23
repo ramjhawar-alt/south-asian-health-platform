@@ -1,0 +1,60 @@
+# ── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+backend/venv/
+.venv/
+env/
+venv/
+
+# ── Environment / secrets ────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.*.example
+backend/.env
+frontend/.env.local
+
+# ── Data & model caches ──────────────────────────────────
+data/chroma_db/
+data/papers/
+backend/.flashrank_cache/
+backend/rag/__pycache__/
+backend/routes/__pycache__/
+backend/pulse/__pycache__/
+
+# ── Next.js ──────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ── macOS ─────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# ── Editor ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+/tmp/pulse_*.log
