@@ -1,6 +1,6 @@
 """
 Chat API route: RAG-powered Q&A with streaming and citation output.
-Uses Groq for LLM and local sentence-transformers for embeddings.
+Uses Groq for LLM and local deterministic embeddings.
 """
 import json
 import os
@@ -24,6 +24,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     history: list[ChatMessage] = []
+    user_context: str | None = None
 
 
 class Citation(BaseModel):
@@ -64,8 +65,13 @@ async def chat_stream(request: ChatRequest):
 
     groq_async = AsyncGroq(api_key=api_key)
 
+    retrieve_query = (request.question or "").strip()
+    if request.user_context and str(request.user_context).strip():
+        brief = str(request.user_context).strip()[:500]
+        retrieve_query = f"{retrieve_query}\n\n[User risk screener profile (for relevance): {brief}]"
+
     hits, info = retrieve(
-        query=request.question,
+        query=retrieve_query,
         chroma_db_path=chroma_path,
         top_k=10,
     )
@@ -85,6 +91,7 @@ async def chat_stream(request: ChatRequest):
                 async_groq_client=groq_async,
                 conversation_history=history,
                 low_confidence=low_confidence,
+                user_context=request.user_context,
             ):
                 full_answer += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
@@ -93,22 +100,35 @@ async def chat_stream(request: ChatRequest):
 
             # Generate 3 follow-up question chips
             try:
+                if request.user_context and str(request.user_context).strip():
+                    _uc = str(request.user_context).strip()
+                    if len(_uc) > 450:
+                        _uc = _uc[:450] + "…"
+                    followup_user_content = (
+                        f"User profile (in-app screener, educational; tailor follow-up ideas when useful):\n{_uc}\n\n"
+                        f"Question: {request.question}\nAnswer summary: {full_answer[:600]}"
+                    )
+                else:
+                    followup_user_content = (
+                        f"Question: {request.question}\nAnswer summary: {full_answer[:600]}"
+                    )
                 followup_resp = await groq_async.chat.completions.create(
                     model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                     messages=[
                         {
                             "role": "system",
                             "content": (
-                                "You are a South Asian health assistant. "
-                                "Given a question and answer, produce exactly 3 concise follow-up questions "
-                                "the user might want to ask next. Each must be under 12 words. "
+                                "You are helping non-medical users. "
+                                "Given a question and a plain-language research-based answer, "
+                                "propose exactly 3 short follow-up questions they might ask next. "
+                                "Everyday wording, no jargon, each under 12 words. "
                                 "Return ONLY a JSON array of 3 strings, nothing else. "
                                 'Example: ["Question one?", "Question two?", "Question three?"]'
                             ),
                         },
                         {
                             "role": "user",
-                            "content": f"Question: {request.question}\nAnswer summary: {full_answer[:600]}",
+                            "content": followup_user_content,
                         },
                     ],
                     temperature=0.4,
