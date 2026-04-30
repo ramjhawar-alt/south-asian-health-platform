@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: south-asian-health-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: ENTREZ_EMAIL
+        sync: false
+      - key: CHROMA_DB_PATH
+        value: ../data/chroma_db
+      - key: PAPERS_DIR
+        value: ../data/papers
+      - key: GUIDELINES_DIR
+        value: ../data/guidelines
+      - key: CORS_ORIGINS
+        sync: false
+
