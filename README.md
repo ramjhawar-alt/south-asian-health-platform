@@ -17,14 +17,6 @@ This project was built to close that gap with transparent, source-grounded tools
 - **Simulator:** visual, educational trend simulation for common cardiometabolic scenarios.
 - **Conditions + Resources:** plain-language explainers and curated references.
 
-## What recruiters usually care about
-
-- **End-to-end product ownership:** problem framing, UX iteration, model/tooling tradeoffs, and deployment.
-- **Production deployment:** frontend on Vercel, backend API on Render, CORS and environment management across services.
-- **Pragmatic reliability decisions:** reduced backend memory footprint to fit deployment constraints while preserving platform functionality.
-- **Applied AI engineering:** retrieval pipeline + citation workflow, not a black-box chatbot.
-- **Clear scope boundaries:** educational tool, explicit methodology notes, and clinical limitations documented in-repo.
-
 ## Architecture
 
 ```text
