@@ -1,7 +1,7 @@
 """
 RAG ingestion pipeline for South Asian health research.
 Fetches papers from PubMed and Semantic Scholar, parses PDFs,
-chunks text, embeds with sentence-transformers (local, free),
+chunks text, embeds with a lightweight local deterministic embedder,
 and stores in ChromaDB.
 """
 import hashlib
@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Optional
 
 import chromadb
+import numpy as np
 import pymupdf
 from Bio import Entrez
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from semanticscholar import SemanticScholar
-from sentence_transformers import SentenceTransformer
 
 SOUTH_ASIAN_HEALTH_QUERIES = [
     "South Asian type 2 diabetes BMI",
@@ -48,21 +48,30 @@ SOUTH_ASIAN_HEALTH_QUERIES = [
 CHUNK_SIZE = 1024
 CHUNK_OVERLAP = 128
 COLLECTION_NAME = "south_asian_health"
-# Domain-specific embedding model trained on PubMed abstracts.
-# ~420 MB, 768-dim, free and local. Significantly better for medical retrieval
-# than general-purpose models like bge-large.
-EMBEDDING_MODEL_NAME = "NeuML/pubmedbert-base-embeddings"
-
-_embedding_model: SentenceTransformer | None = None
+EMBEDDING_DIM = 384
 
 
-def get_embedding_model() -> SentenceTransformer:
-    global _embedding_model
-    if _embedding_model is None:
-        print(f"Loading embedding model {EMBEDDING_MODEL_NAME} (first run downloads ~420 MB)...")
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        print("Embedding model loaded.")
-    return _embedding_model
+def _embed_text_deterministic(text: str, dim: int = EMBEDDING_DIM) -> list[float]:
+    """
+    Lightweight deterministic embedding based on hashed token features.
+    This avoids heavy ML runtime dependencies so low-memory deployments
+    (e.g. Render free tier) can start reliably.
+    """
+    vec = np.zeros(dim, dtype=np.float32)
+    if not text:
+        return vec.tolist()
+
+    tokens = text.lower().split()
+    for tok in tokens:
+        h = int(hashlib.md5(tok.encode("utf-8")).hexdigest(), 16)
+        idx = h % dim
+        sign = 1.0 if ((h >> 1) & 1) == 0 else -1.0
+        vec[idx] += sign
+
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
+    return vec.tolist()
 
 
 def get_chroma_client(db_path: str) -> chromadb.ClientAPI:
@@ -77,15 +86,11 @@ def get_collection(client: chromadb.ClientAPI) -> chromadb.Collection:
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    model = get_embedding_model()
-    embeddings = model.encode(texts, normalize_embeddings=True)
-    return embeddings.tolist()
+    return [_embed_text_deterministic(t) for t in texts]
 
 
 def embed_query(query: str) -> list[float]:
-    model = get_embedding_model()
-    embedding = model.encode([query], normalize_embeddings=True)
-    return embedding[0].tolist()
+    return _embed_text_deterministic(query)
 
 
 def doc_id(content: str) -> str:
@@ -564,9 +569,6 @@ def run_full_ingestion(
     high_evidence_max: int = 30,
     guidelines_path: str = "../data/guidelines",
 ) -> dict:
-    # Warm up embedding model before ingestion starts
-    get_embedding_model()
-
     chroma_client = get_chroma_client(chroma_db_path)
     collection = get_collection(chroma_client)
 

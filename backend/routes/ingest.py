@@ -1,6 +1,6 @@
 """
 Ingest API route: admin endpoint to trigger research paper ingestion.
-No API key needed for ingestion — embeddings are local (sentence-transformers).
+No API key needed for ingestion — embeddings are local and lightweight.
 """
 import os
 
