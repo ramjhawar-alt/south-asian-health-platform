@@ -327,7 +327,7 @@ export default function AssessPage() {
               <h2 className="font-semibold text-[var(--foreground)]">Body Measurements</h2>
               <div className="flex items-center gap-0.5 bg-[var(--muted)] rounded-lg p-0.5 text-xs">
                 <button onClick={() => update({ useImperial: false })} className={cn("px-2 py-1 rounded-md font-medium transition-all", !form.useImperial ? "bg-white text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}>Metric</button>
-                <button onClick={() => update({ useImperial: true })} className={cn("px-2 py-1 rounded-md font-medium transition-all", form.useImperial ? "bg-white text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}>US</button>
+                <button onClick={() => update({ useImperial: true })} className={cn("px-2 py-1 rounded-md font-medium transition-all", form.useImperial ? "bg-white text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}>Imperial</button>
               </div>
             </div>
 

@@ -333,7 +333,7 @@ export default function SimulatePage() {
                       : "text-[var(--muted-foreground)]"
                   )}
                 >
-                  US
+                  Imperial
                 </button>
               </div>
             </div>
