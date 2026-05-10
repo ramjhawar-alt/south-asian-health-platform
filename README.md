@@ -62,6 +62,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Optional: create `frontend/.env.local` and set `ASSESS_ENABLED=true` to enable the full Risk Assessment UI while developing. On Vercel, add the same **server** environment variable (not `NEXT_PUBLIC_*`) only when you want the tool live publicly.
 
+### Vercel (frontend)
+
+Set the Vercel project **Root Directory** to the **repository root** (leave blank / default), not `frontend`. The root `package.json` runs `pnpm install` and `pnpm run build` inside `frontend/`. If Root Directory is set to `frontend`, remove it or duplicate this build wiring there.
+
 ## Key docs
 
 - Risk methodology: `docs/RISK_METHODOLOGY.md`
