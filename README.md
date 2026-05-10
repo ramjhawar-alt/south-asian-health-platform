@@ -71,6 +71,8 @@ Use **one** setup only (mixing them breaks `pnpm install`):
 
 **Do not** commit a root `vercel.json` with `pnpm install --dir frontend` while Root Directory is `frontend`: Vercel still reads that file from the repo root, and the command resolves to `frontend/frontend`, so install exits with **1**. Domains and preview URLs are unrelated.
 
+`frontend/vercel.json` intentionally sets the default pnpm install and build commands so stale dashboard or cached project settings cannot resurrect `pnpm install --dir frontend`.
+
 ## Key docs
 
 - Risk methodology: `docs/RISK_METHODOLOGY.md`
