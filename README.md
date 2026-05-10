@@ -13,7 +13,7 @@ This project was built to close that gap with transparent, source-grounded tools
 ## What it does
 
 - **Research Q&A:** asks health questions over a curated literature base and returns cited answers.
-- **Risk Assessment:** computes a South Asian-focused educational risk snapshot with transparent logic.
+- **Risk Assessment:** South Asian-focused educational risk snapshot (gated on the public site until launch; enable locally with `NEXT_PUBLIC_ASSESS_ENABLED=true`).
 - **Simulator:** visual, educational trend simulation for common cardiometabolic scenarios.
 - **Conditions + Resources:** plain-language explainers and curated references.
 
@@ -59,6 +59,8 @@ pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Optional: create `frontend/.env.local` and set `NEXT_PUBLIC_ASSESS_ENABLED=true` to enable the full Risk Assessment UI while developing. Production stays on the public “coming soon” gate unless you set that variable in Vercel.
 
 ## Key docs
 
