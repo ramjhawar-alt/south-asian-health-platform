@@ -64,7 +64,7 @@ Optional: create `frontend/.env.local` and set `ASSESS_ENABLED=true` to enable t
 
 ### Vercel (frontend)
 
-Set the Vercel project **Root Directory** to the **repository root** (leave blank / default), not `frontend`. The root `package.json` runs `pnpm install` and `pnpm run build` inside `frontend/`. If Root Directory is set to `frontend`, remove it or duplicate this build wiring there.
+In the Vercel project settings, set **Root Directory** to `frontend` (the folder that contains `package.json` and `next.config.ts`). Install command: `pnpm install`, build command: `pnpm run build`.
 
 ## Key docs
 
