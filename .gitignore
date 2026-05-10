@@ -31,6 +31,9 @@ backend/rag/__pycache__/
 backend/routes/__pycache__/
 backend/pulse/__pycache__/
 
+# ── Node (repo root workspace) ───────────────────────────
+/node_modules/
+
 # ── Next.js ──────────────────────────────────────────────
 frontend/.next/
 frontend/out/
@@ -58,3 +61,4 @@ Thumbs.db
 # ── Logs ─────────────────────────────────────────────────
 *.log
 /tmp/pulse_*.log
+.vercel
