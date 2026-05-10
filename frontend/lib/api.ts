@@ -25,9 +25,15 @@ export interface ChatMessage {
   retrieval_info?: RetrievalInfo;
 }
 
+export type StreamChatOptions = {
+  /** Risk Assessment or other self-reported summary; sent to the server for RAG + prompt personalization. */
+  userContext?: string;
+};
+
 export async function* streamChat(
   question: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  options: StreamChatOptions = {}
 ): AsyncGenerator<
   | { type: "token"; content: string }
   | { type: "citations"; citations: Citation[] }
@@ -35,12 +41,14 @@ export async function* streamChat(
   | { type: "follow_ups"; questions: string[] }
   | { type: "error"; message: string }
 > {
+  const { userContext } = options;
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       question,
       history: history.map((m) => ({ role: m.role, content: m.content })),
+      ...(userContext && userContext.trim() ? { user_context: userContext } : {}),
     }),
   });
 
