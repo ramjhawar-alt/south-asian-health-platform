@@ -64,12 +64,12 @@ Optional: create `frontend/.env.local` and set `ASSESS_ENABLED=true` to enable t
 
 ### Vercel (frontend)
 
-The repo includes **`vercel.json`** at the root so installs and builds run inside **`frontend/`** even when the Vercel **Root Directory** is left at the repository root. You normally do **not** need custom Install/Build overrides in the dashboard unless you changed them before—in that case, clear the overrides so Vercel uses `vercel.json`, or set them explicitly to:
+Use **one** setup only (mixing them breaks `pnpm install`):
 
-- **Install Command:** `pnpm install --dir frontend`
-- **Build Command:** `pnpm --dir frontend run build`
+1. **Settings** → search **`root`** → **Root Directory** = **`frontend`** → Save.
+2. Leave **Install Command** and **Build Command** on defaults (override toggles off). Vercel runs **`pnpm install`** / **`pnpm run build`** inside `frontend/`.
 
-Alternatively, you can set **Root Directory** to `frontend` and use the default `pnpm install` / `pnpm run build` with no `vercel.json` overrides.
+**Do not** commit a root `vercel.json` with `pnpm install --dir frontend` while Root Directory is `frontend`: Vercel still reads that file from the repo root, and the command resolves to `frontend/frontend`, so install exits with **1**. Domains and preview URLs are unrelated.
 
 ## Key docs
 
