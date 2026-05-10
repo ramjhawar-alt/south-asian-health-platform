@@ -75,8 +75,6 @@ Use **one** setup only (mixing them breaks `pnpm install`):
 
 **Do not** commit a root `vercel.json` with `pnpm install --dir frontend` while Root Directory is `frontend`: Vercel still reads that file from the repo root, and the command resolves to `frontend/frontend`, so install exits with **1**. Domains and preview URLs are unrelated.
 
-`frontend/vercel.json` intentionally sets the default pnpm install and build commands so stale dashboard or cached project settings cannot resurrect `pnpm install --dir frontend`.
-
 If pnpm still misbehaves, try removing **`ENABLE_EXPERIMENTAL_COREPACK`** from the Vercel project env (some community reports prefer the default Corepack path).
 
 ## Key docs
