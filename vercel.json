@@ -1,0 +1,4 @@
+{
+  "installCommand": "pnpm install --dir frontend",
+  "buildCommand": "pnpm --dir frontend run build"
+}
