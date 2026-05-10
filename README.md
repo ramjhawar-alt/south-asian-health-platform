@@ -64,6 +64,10 @@ Optional: create `frontend/.env.local` and set `ASSESS_ENABLED=true` to enable t
 
 ### Vercel (frontend)
 
+**Root Directory `frontend`:** Next.js lives under `frontend/` instead of the repo root (unlike many single-package templates). Set **Root Directory** so installs and builds run beside the app and `pnpm-lock.yaml`.
+
+**Root `package.json`:** a minimal root manifest with only `"packageManager": "pnpm@9.15.9"` helps Vercel Corepack at the **Git** root, avoiding `pnpm install` exit **1** or the lockfile being ignored when the dashboard root is not the app folder alone.
+
 Use **one** setup only (mixing them breaks `pnpm install`):
 
 1. **Settings** → search **`root`** → **Root Directory** = **`frontend`** → Save.
@@ -72,6 +76,8 @@ Use **one** setup only (mixing them breaks `pnpm install`):
 **Do not** commit a root `vercel.json` with `pnpm install --dir frontend` while Root Directory is `frontend`: Vercel still reads that file from the repo root, and the command resolves to `frontend/frontend`, so install exits with **1**. Domains and preview URLs are unrelated.
 
 `frontend/vercel.json` intentionally sets the default pnpm install and build commands so stale dashboard or cached project settings cannot resurrect `pnpm install --dir frontend`.
+
+If pnpm still misbehaves, try removing **`ENABLE_EXPERIMENTAL_COREPACK`** from the Vercel project env (some community reports prefer the default Corepack path).
 
 ## Key docs
 
