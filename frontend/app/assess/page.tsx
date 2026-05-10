@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { AssessClientLoader } from "./assess-client-loader";
 
+/** Evaluate per request so public deploys are not stuck on an old baked-in flag. */
+export const dynamic = "force-dynamic";
+
 /**
  * Risk assessment is gated for public deploys.
- * Set NEXT_PUBLIC_ASSESS_ENABLED=true in .env.local (and Vercel) to show the full tool.
+ * Set ASSESS_ENABLED=true in `.env.local` (local) or in Vercel **server** env (not `NEXT_PUBLIC_*`) to serve the full tool.
  */
 export default function AssessPage() {
-  if (process.env.NEXT_PUBLIC_ASSESS_ENABLED === "true") {
+  if (process.env.ASSESS_ENABLED === "true") {
     return <AssessClientLoader />;
   }
 
