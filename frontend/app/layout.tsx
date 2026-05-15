@@ -1,22 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Anek_Devanagari, DM_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
-import { Navigation } from "@/components/navigation";
+import { ConditionalChrome } from "@/components/conditional-chrome";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  preload: true,
+});
+
+/** Latin + Devanagari; distinctive Indian UI tone for the home hero title */
+const anekDevanagari = Anek_Devanagari({
+  variable: "--font-anek-devanagari",
+  subsets: ["latin", "devanagari"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "South Asian Health Platform",
+  title: "South Asian Health",
   description:
-    "Evidence-based health information and physiology simulation tailored for South Asian populations.",
+    "Health information and tools grounded in research on South Asian populations.",
 };
 
 export default function RootLayout({
@@ -27,11 +37,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${dmSans.variable} ${fraunces.variable} ${anekDevanagari.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
-        <Navigation />
-        <main className="flex-1 flex flex-col">{children}</main>
+      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)] font-sans">
+        <ConditionalChrome>{children}</ConditionalChrome>
       </body>
     </html>
   );
