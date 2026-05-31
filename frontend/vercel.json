@@ -3,8 +3,20 @@
   "installCommand": "pnpm install",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://south-asian-health-backend.onrender.com/api/:path*"
+      "source": "/api/chat",
+      "destination": "https://south-asian-health-backend.onrender.com/api/chat"
+    },
+    {
+      "source": "/api/ingest/:path*",
+      "destination": "https://south-asian-health-backend.onrender.com/api/ingest/:path*"
+    },
+    {
+      "source": "/api/kb/:path*",
+      "destination": "https://south-asian-health-backend.onrender.com/api/kb/:path*"
+    },
+    {
+      "source": "/api/figures/:path*",
+      "destination": "https://south-asian-health-backend.onrender.com/api/figures/:path*"
     }
   ]
 }
