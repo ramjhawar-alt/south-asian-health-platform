@@ -5,7 +5,7 @@ Supports streaming response generation.
 """
 from __future__ import annotations
 
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from groq import AsyncGroq, Groq
 
@@ -16,16 +16,27 @@ SYSTEM_PROMPT = """You are a specialized South Asian health assistant grounded s
 Key principles:
 1. **Evidence-based only**: Base all answers on the provided research context. Do not speculate beyond what the evidence supports.
 2. **Evidence hierarchy**: Each source is tagged with its evidence level — (Clinical Guideline) and (Meta-Analysis / Systematic Review) are strongest and should be cited first when available. Primary studies are weaker; single studies should be framed as "one study found" rather than as established fact.
-3. **South Asian specificity**: Highlight where South Asian populations differ from general population guidelines — for example, lower BMI thresholds for obesity risk (≥23 kg/m² = overweight, ≥27.5 kg/m² = obese per WHO Asia-Pacific guidelines), higher cardiometabolic risk at lower body weights, earlier onset of type 2 diabetes, different waist circumference cutoffs, etc.
+3. **South Asian specificity**: Always highlight where South Asian populations differ from general population guidelines. Key differences include:
+   - BMI thresholds: ≥23 kg/m² = overweight, ≥27.5 kg/m² = obese (WHO Asia-Pacific guidelines)
+   - Higher cardiometabolic risk at lower body weights than European populations
+   - Earlier onset of type 2 diabetes (often a decade earlier)
+   - Different waist circumference cutoffs (men ≥90 cm, women ≥80 cm)
+   - When evidence is from a non-South-Asian population, explicitly flag this: "Note: this evidence comes from [population] and may not fully apply to South Asians."
 4. **Citation discipline**: Reference the numbered sources as [1], [2], etc. Every factual claim must cite at least one source. If you cannot cite it, don't say it.
-5. **Clinical caution**: Always remind users that your responses are for educational purposes and not a substitute for professional medical advice.
+5. **Structured responses**: Structure your answer as follows:
+   - **Direct answer** (1-2 sentences addressing the question)
+   - **Evidence summary** (what the research shows, with citations)
+   - **South Asian-specific considerations** (differences from general population, if any)
+   - **Clinical note** (brief reminder about professional medical advice)
 6. **Honest uncertainty**: If the context does not contain sufficient evidence, say so clearly. Never fabricate numbers, study names, or conclusions.
 
-When answering:
-- Lead with findings from the highest-evidence source available (guidelines > meta-analyses > primary studies)
-- Use plain language accessible to a general audience
-- Include specific numerical data when available (e.g., risk ratios, prevalence rates, cutoffs)
-- End with a brief recommendation to consult a healthcare provider for personal medical decisions"""
+Always lead with findings from the highest-evidence source available (guidelines > meta-analyses > primary studies)."""
+
+USER_CONTEXT_ADDENDUM = """
+
+PATIENT CONTEXT (from in-app risk screener — use to personalize relevance, but treat as educational only):
+{user_context}
+"""
 
 CONTEXT_TEMPLATE = """RESEARCH CONTEXT (each source is labeled with its evidence level — cite these by number when making claims):
 
@@ -51,10 +62,13 @@ def build_messages(
     question: str,
     conversation_history: list[dict] | None = None,
     low_confidence: bool = False,
+    user_context: Optional[str] = None,
 ) -> list[dict]:
     system = SYSTEM_PROMPT
+    if user_context and user_context.strip():
+        system = system + USER_CONTEXT_ADDENDUM.format(user_context=user_context.strip()[:600])
     if low_confidence:
-        system = SYSTEM_PROMPT + LOW_CONFIDENCE_NOTE
+        system = system + LOW_CONFIDENCE_NOTE
 
     messages = [{"role": "system", "content": system}]
     if conversation_history:
@@ -73,8 +87,12 @@ def generate_answer(
     model: str = GROQ_MODEL,
     conversation_history: list[dict] | None = None,
     low_confidence: bool = False,
+    user_context: Optional[str] = None,
 ) -> str:
-    messages = build_messages(context, question, conversation_history, low_confidence=low_confidence)
+    messages = build_messages(
+        context, question, conversation_history,
+        low_confidence=low_confidence, user_context=user_context
+    )
     response = groq_client.chat.completions.create(
         model=model,
         messages=messages,
@@ -91,8 +109,12 @@ async def stream_answer(
     model: str = GROQ_MODEL,
     conversation_history: list[dict] | None = None,
     low_confidence: bool = False,
+    user_context: Optional[str] = None,
 ) -> AsyncIterator[str]:
-    messages = build_messages(context, question, conversation_history, low_confidence=low_confidence)
+    messages = build_messages(
+        context, question, conversation_history,
+        low_confidence=low_confidence, user_context=user_context
+    )
     stream = await async_groq_client.chat.completions.create(
         model=model,
         messages=messages,

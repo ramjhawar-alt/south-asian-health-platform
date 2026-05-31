@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Use relative URLs so the Next.js rewrite proxy handles routing to the backend.
+// This avoids CORS issues regardless of which port Next.js runs on.
+// The rewrite in next.config.ts maps /api/* → backend URL.
+const API_BASE = "";
 
 export interface Citation {
   ref: number;
@@ -9,6 +12,8 @@ export interface Citation {
   source: string;
   evidence_level?: string;
   evidence_label?: string;
+  has_figures?: boolean;
+  figures_dir?: string;
 }
 
 export interface RetrievalInfo {

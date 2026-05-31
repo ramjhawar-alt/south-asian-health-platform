@@ -1,4 +1,10 @@
 {
   "buildCommand": "pnpm run build",
-  "installCommand": "pnpm install"
+  "installCommand": "pnpm install",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://south-asian-health-backend.onrender.com/api/:path*"
+    }
+  ]
 }

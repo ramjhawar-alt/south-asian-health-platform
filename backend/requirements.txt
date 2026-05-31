@@ -18,5 +18,11 @@ pymupdf>=1.24.0
 semanticscholar>=0.8.4
 httpx>=0.27.0
 
+# Embeddings
+voyageai>=0.3.0
+
 # Data
 numpy>=1.26.0
+
+# Scheduler (KB auto-build)
+apscheduler>=3.10.0
