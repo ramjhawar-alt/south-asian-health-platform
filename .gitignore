@@ -26,6 +26,8 @@ frontend/.env.local
 # ── Data & model caches ──────────────────────────────────
 data/chroma_db/
 data/papers/
+data/figures/
+data/knowledge_base/
 backend/.flashrank_cache/
 backend/rag/__pycache__/
 backend/routes/__pycache__/
