@@ -14,12 +14,17 @@ services:
         value: llama-3.3-70b-versatile
       - key: ENTREZ_EMAIL
         sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
       - key: CHROMA_DB_PATH
         value: ../data/chroma_db
       - key: PAPERS_DIR
         value: ../data/papers
       - key: GUIDELINES_DIR
         value: ../data/guidelines
+      - key: KNOWLEDGE_BASE_PATH
+        value: ../data/knowledge_base
+      - key: FIGURES_DIR
+        value: ../data/figures
       - key: CORS_ORIGINS
         sync: false
-

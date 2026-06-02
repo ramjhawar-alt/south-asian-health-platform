@@ -8,17 +8,97 @@ interface CitationPanelProps {
   citations: Citation[];
 }
 
+interface FigureItem {
+  filename: string;
+  url: string;
+}
+
 const SOURCE_STYLES: Record<string, string> = {
   PubMed: "bg-blue-50 text-blue-700 border-blue-200",
   "Clinical Guideline": "bg-emerald-50 text-emerald-700 border-emerald-200",
   "PMC Full Text": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "Unpaywall PDF": "bg-violet-50 text-violet-700 border-violet-200",
+  "OpenAlex": "bg-orange-50 text-orange-700 border-orange-200",
+  "Knowledge Base": "bg-teal-50 text-teal-700 border-teal-200",
 };
 
 const EVIDENCE_STYLES: Record<string, string> = {
   guideline: "bg-emerald-100 text-emerald-800",
   meta_analysis: "bg-amber-100 text-amber-800",
   rct: "bg-sky-100 text-sky-800",
+  knowledge_base: "bg-teal-100 text-teal-800",
 };
+
+// Relative URLs — routed through Next.js rewrite proxy to avoid CORS issues.
+const API_BASE = "";
+
+function FiguresSection({ figuresDir }: { figuresDir: string }) {
+  const [figures, setFigures] = useState<FigureItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  async function loadFigures() {
+    if (figures !== null) {
+      setExpanded(!expanded);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/figures/${figuresDir}`);
+      const data = await res.json();
+      setFigures(data.figures ?? []);
+      setExpanded(true);
+    } catch {
+      setFigures([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const hasFigures = figures !== null && figures.length > 0;
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={loadFigures}
+        className="flex items-center gap-1 text-[10px] text-[var(--primary)] hover:underline font-medium"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        {loading ? "Loading figures…" : figures === null ? "Show figures" : expanded ? "Hide figures" : `${figures.length} figure${figures.length !== 1 ? "s" : ""}`}
+      </button>
+
+      {expanded && hasFigures && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {figures.map((fig) => (
+            <a
+              key={fig.filename}
+              href={`${API_BASE}${fig.url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-lg overflow-hidden border border-[var(--card-border)] hover:border-[var(--primary)] transition-colors"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${API_BASE}${fig.url}`}
+                alt={fig.filename}
+                className="w-full h-28 object-contain bg-white"
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {expanded && figures !== null && figures.length === 0 && (
+        <p className="mt-1 text-[10px] text-[var(--muted-foreground)]">No figures available.</p>
+      )}
+    </div>
+  );
+}
 
 export function CitationPanel({ citations }: CitationPanelProps) {
   const [expanded, setExpanded] = useState(false);
@@ -106,6 +186,11 @@ export function CitationPanel({ citations }: CitationPanelProps) {
                       </a>
                     )}
                   </div>
+
+                  {/* Figures section — only shown when figures were extracted */}
+                  {c.has_figures && c.figures_dir && (
+                    <FiguresSection figuresDir={c.figures_dir} />
+                  )}
                 </div>
               </div>
             </div>
