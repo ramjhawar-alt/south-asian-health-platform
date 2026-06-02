@@ -39,6 +39,15 @@ def _make_min_date(days_back: int) -> str:
     return cutoff.strftime("%Y/%m/%d")
 
 
+def _resolve_papers_db_path() -> str:
+    from pathlib import Path as _Path
+    papers_dir = os.getenv("PAPERS_DIR", "../data/papers")
+    backend_dir = _Path(__file__).resolve().parent.parent
+    if not _Path(papers_dir).is_absolute():
+        papers_dir = str(backend_dir / papers_dir)
+    return str(_Path(papers_dir) / "papers.db")
+
+
 def _run_ingestion(
     chroma_path: str,
     entrez_email: str,
@@ -56,6 +65,7 @@ def _run_ingestion(
             entrez_email=entrez_email,
             guidelines_path=guidelines_path,
             figures_dir=figures_dir,
+            papers_db_path=_resolve_papers_db_path(),
             **kwargs,
         )
         _ingestion_status["last_result"] = result

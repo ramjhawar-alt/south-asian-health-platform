@@ -5,10 +5,13 @@ parses PDFs, extracts figures, chunks text, embeds with Voyage AI
 (voyage-3.5 — biomedical domain model), and stores in ChromaDB.
 """
 import hashlib
+import json
 import os
+import sqlite3
 import tempfile
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -156,6 +159,97 @@ def embed_query(query: str) -> list[float]:
 
 def doc_id(content: str) -> str:
     return hashlib.md5(content.encode()).hexdigest()
+
+
+# ── SQLite paper store ─────────────────────────────────────────────────────────
+
+SOURCE_PRIORITY: dict[str, int] = {
+    "Unpaywall PDF": 5,
+    "PMC Full Text": 4,
+    "Clinical Guideline": 4,
+    "PDF": 3,
+    "PubMed": 2,
+    "MASALA Study / PubMed": 2,
+    "MASALA Study / PMC Full Text": 4,
+    "OpenAlex": 1,
+    "Semantic Scholar": 1,
+}
+
+
+def init_paper_store(db_path: str) -> sqlite3.Connection:
+    """Open (or create) the SQLite paper store. Caller must close the connection."""
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS papers (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            title          TEXT    NOT NULL,
+            abstract       TEXT    NOT NULL,
+            authors        TEXT    NOT NULL DEFAULT '',
+            year           TEXT    NOT NULL DEFAULT '',
+            source         TEXT    NOT NULL DEFAULT '',
+            doi            TEXT    NOT NULL DEFAULT '',
+            pmid           TEXT    NOT NULL DEFAULT '',
+            evidence_level TEXT    NOT NULL DEFAULT 'primary',
+            pub_types      TEXT    NOT NULL DEFAULT '',
+            has_figures    INTEGER NOT NULL DEFAULT 0,
+            figures_dir    TEXT    NOT NULL DEFAULT '',
+            ingested_at    TEXT    NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_doi  ON papers(doi)  WHERE doi  != ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_pmid ON papers(pmid) WHERE pmid != ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_source   ON papers(source)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_evidence ON papers(evidence_level)")
+    conn.commit()
+    return conn
+
+
+def upsert_paper_to_store(conn: sqlite3.Connection, paper: dict) -> None:
+    """Insert or update a paper. Overwrites only if incoming source has higher priority."""
+    doi  = (paper.get("doi",  "") or "").strip().lower()
+    pmid = (paper.get("pmid", "") or "").strip()
+    now  = datetime.now(timezone.utc).isoformat()
+    incoming_priority = SOURCE_PRIORITY.get(paper.get("source", ""), 0)
+
+    existing = None
+    if doi:
+        existing = conn.execute("SELECT id, source FROM papers WHERE doi = ?", (doi,)).fetchone()
+    if existing is None and pmid:
+        existing = conn.execute("SELECT id, source FROM papers WHERE pmid = ?", (pmid,)).fetchone()
+
+    values = (
+        (paper.get("title",   "") or "")[:2000],
+        paper.get("abstract", "") or "",
+        (paper.get("authors", "") or "")[:500],
+        paper.get("year",     "") or "",
+        paper.get("source",   "") or "",
+        doi,
+        pmid,
+        paper.get("evidence_level", "primary") or "primary",
+        (paper.get("pub_types", "") or "")[:500],
+        int(bool(paper.get("has_figures", False))),
+        paper.get("figures_dir", "") or "",
+        now,
+    )
+
+    if existing is None:
+        conn.execute("""
+            INSERT INTO papers
+              (title, abstract, authors, year, source, doi, pmid,
+               evidence_level, pub_types, has_figures, figures_dir, ingested_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, values)
+    elif incoming_priority > SOURCE_PRIORITY.get(existing["source"], 0):
+        conn.execute("""
+            UPDATE papers
+            SET title=?, abstract=?, authors=?, year=?, source=?, doi=?,
+                pmid=?, evidence_level=?, pub_types=?, has_figures=?,
+                figures_dir=?, ingested_at=?
+            WHERE id=?
+        """, values + (existing["id"],))
 
 
 def chunk_text(text: str) -> list[str]:
@@ -849,6 +943,7 @@ def ingest_papers_to_chroma(
     papers: list[dict],
     collection: chromadb.Collection,
     batch_size: int = 50,
+    paper_store_conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     total_ingested = 0
     texts_batch: list[str] = []
@@ -856,6 +951,9 @@ def ingest_papers_to_chroma(
     ids_batch: list[str] = []
 
     for paper in papers:
+        if paper_store_conn is not None:
+            upsert_paper_to_store(paper_store_conn, paper)
+
         text_content = f"{paper['title']}\n\n{paper['abstract']}"
         chunks = chunk_text(text_content)
 
@@ -886,6 +984,8 @@ def ingest_papers_to_chroma(
                 texts_batch, metas_batch, ids_batch = [], [], []
 
     total_ingested += _flush_batch(collection, ids_batch, texts_batch, metas_batch)
+    if paper_store_conn is not None:
+        paper_store_conn.commit()
     return total_ingested
 
 
@@ -996,15 +1096,21 @@ def run_full_ingestion(
     figures_dir: Optional[str] = None,
     reset_collection: bool = False,
     min_date: Optional[str] = None,
+    papers_db_path: Optional[str] = None,
 ) -> dict:
     """Run the full ingestion pipeline.
 
+    Collects papers from all sources, deduplicates across sources, enriches
+    with Unpaywall full text, persists raw papers to SQLite, then vectorizes
+    into ChromaDB in a single pass.
+
     Args:
-        reset_collection: If True, delete and recreate the ChromaDB collection.
-            Required when switching embedding models.
-        min_date: If set (format YYYY/MM/DD), only fetch papers published on or
-            after this date. Used for incremental weekly/monthly runs to avoid
-            re-processing the entire corpus.
+        reset_collection: Delete and recreate the ChromaDB collection (required
+            when switching embedding models).
+        min_date: Only fetch papers published on or after this date (YYYY/MM/DD).
+            Used for incremental weekly runs.
+        papers_db_path: Path to the SQLite paper store. Defaults to
+            $PAPERS_DIR/papers.db. Pass None to skip paper store.
     """
     chroma_client = get_chroma_client(chroma_db_path)
 
@@ -1016,101 +1122,109 @@ def run_full_ingestion(
             pass
 
     collection = get_collection(chroma_client)
-    total_chunks = 0
+
+    # ── Phase 1: Collect from all sources ─────────────────────────────────────
+    all_papers: list[dict] = []
 
     print("Fetching high-evidence PubMed papers (meta-analyses, systematic reviews, guidelines)...")
-    high_evidence_papers = fetch_pubmed_papers(
-        SOUTH_ASIAN_HEALTH_QUERIES,
-        entrez_email,
-        max_per_query=high_evidence_max,
-        high_evidence_only=True,
+    he_papers = fetch_pubmed_papers(
+        SOUTH_ASIAN_HEALTH_QUERIES, entrez_email,
+        max_per_query=high_evidence_max, high_evidence_only=True, min_date=min_date,
     )
-    print(f"  Found {len(high_evidence_papers)} high-evidence papers")
-    if unpaywall_enrich and high_evidence_papers:
-        print(f"  Enriching with Unpaywall full text (up to {unpaywall_max_papers})...")
-        high_evidence_papers, upgraded = enrich_papers_with_unpaywall(
-            high_evidence_papers, entrez_email,
-            max_papers=unpaywall_max_papers, figures_dir=figures_dir
-        )
-        print(f"  -> Upgraded {upgraded}/{len(high_evidence_papers)} to full text via Unpaywall")
-    if high_evidence_papers:
-        n = ingest_papers_to_chroma(high_evidence_papers, collection)
-        total_chunks += n
-        print(f"  -> Ingested {n} high-evidence chunks (total: {total_chunks})")
+    print(f"  Found {len(he_papers)} high-evidence papers")
+    all_papers.extend(he_papers)
 
     print("Fetching general PubMed papers...")
     pubmed_papers = fetch_pubmed_papers(
-        SOUTH_ASIAN_HEALTH_QUERIES,
-        entrez_email,
-        max_per_query=pubmed_max,
-        high_evidence_only=False,
+        SOUTH_ASIAN_HEALTH_QUERIES, entrez_email,
+        max_per_query=pubmed_max, high_evidence_only=False, min_date=min_date,
     )
     print(f"  Found {len(pubmed_papers)} PubMed papers")
-    if unpaywall_enrich and pubmed_papers:
-        print(f"  Enriching with Unpaywall full text (up to {unpaywall_max_papers})...")
-        pubmed_papers, upgraded = enrich_papers_with_unpaywall(
-            pubmed_papers, entrez_email,
-            max_papers=unpaywall_max_papers, figures_dir=figures_dir
-        )
-        print(f"  -> Upgraded {upgraded}/{len(pubmed_papers)} to full text via Unpaywall")
-    if pubmed_papers:
-        n = ingest_papers_to_chroma(pubmed_papers, collection)
-        total_chunks += n
-        print(f"  -> Ingested {n} PubMed chunks (total: {total_chunks})")
+    all_papers.extend(pubmed_papers)
 
     print("Fetching PMC full-text papers...")
     pmc_papers = fetch_pmc_fulltexts(
-        SOUTH_ASIAN_HEALTH_QUERIES,
-        entrez_email,
-        max_per_query=pmc_max,
+        SOUTH_ASIAN_HEALTH_QUERIES, entrez_email, max_per_query=pmc_max,
     )
-    print(f"  Found {len(pmc_papers)} PMC full-text papers")
-    if pmc_papers:
-        n = ingest_papers_to_chroma(pmc_papers, collection)
-        total_chunks += n
-        print(f"  -> Ingested {n} PMC chunks (total: {total_chunks})")
+    print(f"  Found {len(pmc_papers)} PMC papers")
+    all_papers.extend(pmc_papers)
 
     print("Fetching OpenAlex papers...")
     openalex_papers = fetch_openalex_papers(
-        SOUTH_ASIAN_HEALTH_QUERIES,
-        entrez_email,
-        max_per_query=openalex_max,
+        SOUTH_ASIAN_HEALTH_QUERIES, entrez_email,
+        max_per_query=openalex_max, min_date=min_date,
     )
     print(f"  Found {len(openalex_papers)} OpenAlex papers")
-    if openalex_papers:
-        n = ingest_papers_to_chroma(openalex_papers, collection)
-        total_chunks += n
-        print(f"  -> Ingested {n} OpenAlex chunks (total: {total_chunks})")
+    all_papers.extend(openalex_papers)
 
     print("Fetching Semantic Scholar papers...")
     ss_papers = fetch_semantic_scholar_papers(
-        SOUTH_ASIAN_HEALTH_QUERIES,
-        max_per_query=semantic_scholar_max,
+        SOUTH_ASIAN_HEALTH_QUERIES, max_per_query=semantic_scholar_max,
     )
     print(f"  Found {len(ss_papers)} Semantic Scholar papers")
-    if ss_papers:
-        n = ingest_papers_to_chroma(ss_papers, collection)
-        total_chunks += n
-        print(f"  -> Ingested {n} Semantic Scholar chunks (total: {total_chunks})")
+    all_papers.extend(ss_papers)
 
+    # ── Phase 2: Cross-source deduplication ───────────────────────────────────
+    before_dedup = len(all_papers)
+    all_papers = deduplicate_papers(all_papers)
+    print(f"\nDeduplication: {before_dedup} → {len(all_papers)} unique papers")
+
+    # ── Phase 3: Unpaywall full-text enrichment ────────────────────────────────
+    unpaywall_upgraded = 0
+    if unpaywall_enrich and all_papers:
+        print(f"Enriching with Unpaywall full text (up to {unpaywall_max_papers})...")
+        all_papers, unpaywall_upgraded = enrich_papers_with_unpaywall(
+            all_papers, entrez_email,
+            max_papers=unpaywall_max_papers, figures_dir=figures_dir,
+        )
+        print(f"  -> Upgraded {unpaywall_upgraded}/{len(all_papers)} papers to full text")
+
+    # ── Phase 4: Persist to SQLite paper store ────────────────────────────────
+    paper_store_conn: Optional[sqlite3.Connection] = None
+    if papers_db_path is None:
+        papers_dir = os.getenv("PAPERS_DIR", "../data/papers")
+        backend_dir = Path(__file__).resolve().parent.parent
+        if not Path(papers_dir).is_absolute():
+            papers_dir = str(backend_dir / papers_dir)
+        papers_db_path = str(Path(papers_dir) / "papers.db")
+
+    try:
+        paper_store_conn = init_paper_store(papers_db_path)
+        print(f"Paper store: {papers_db_path}")
+    except Exception as e:
+        print(f"  Warning: could not open paper store ({e}) — continuing without it")
+        paper_store_conn = None
+
+    # ── Phase 5: Single combined ingest pass into ChromaDB ────────────────────
+    print(f"\nIngesting {len(all_papers)} papers into ChromaDB...")
+    total_chunks = ingest_papers_to_chroma(
+        all_papers, collection,
+        paper_store_conn=paper_store_conn,
+    )
+    print(f"  -> {total_chunks} chunks written")
+
+    if paper_store_conn is not None:
+        total_stored = paper_store_conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+        paper_store_conn.close()
+    else:
+        total_stored = 0
+
+    # ── Phase 6: Guidelines ────────────────────────────────────────────────────
     print("Ingesting clinical guidelines (if any)...")
     guideline_chunks = ingest_guidelines_folder(
-        guidelines_path, collection, figures_dir=figures_dir
+        guidelines_path, collection, figures_dir=figures_dir,
     )
     print(f"  Ingested {guideline_chunks} chunks from guidelines")
 
-    unpaywall_count = (
-        sum(1 for p in high_evidence_papers if p.get("source") == "Unpaywall PDF")
-        + sum(1 for p in pubmed_papers if p.get("source") == "Unpaywall PDF")
-    )
-
     return {
-        "high_evidence_count": len(high_evidence_papers),
+        "high_evidence_count": len(he_papers),
         "pubmed_count": len(pubmed_papers),
         "pmc_count": len(pmc_papers),
         "openalex_count": len(openalex_papers),
         "semantic_scholar_count": len(ss_papers),
-        "unpaywall_upgraded": unpaywall_count,
+        "total_papers_after_dedup": len(all_papers),
+        "unpaywall_upgraded": unpaywall_upgraded,
         "total_chunks": total_chunks + guideline_chunks,
         "guideline_chunks": guideline_chunks,
+        "papers_stored_in_db": total_stored,
     }

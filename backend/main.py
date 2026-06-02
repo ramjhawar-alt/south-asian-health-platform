@@ -23,6 +23,7 @@ from routes.chat import router as chat_router
 from routes.figures import router as figures_router
 from routes.ingest import router as ingest_router
 from routes.kb import router as kb_router
+from routes.papers import router as papers_router
 from routes.simulate import router as simulate_router
 
 
@@ -122,6 +123,7 @@ app.include_router(simulate_router, prefix="/api", tags=["Simulation"])
 app.include_router(ingest_router, prefix="/api", tags=["Ingestion"])
 app.include_router(kb_router, prefix="/api", tags=["Knowledge Base"])
 app.include_router(figures_router, prefix="/api", tags=["Figures"])
+app.include_router(papers_router, prefix="/api", tags=["Papers"])
 
 
 @app.get("/")
