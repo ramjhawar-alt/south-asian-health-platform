@@ -29,7 +29,6 @@ from Bio import Entrez
 from rag.ingest import (
     get_chroma_client,
     get_collection,
-    get_embedding_model,
     ingest_papers_to_chroma,
     _classify_evidence,
 )
@@ -292,9 +291,6 @@ def main() -> None:
         sys.exit(1)
 
     chroma_path = os.getenv("CHROMA_DB_PATH", "../data/chroma_db")
-
-    print("Loading embedding model…")
-    get_embedding_model()
 
     client = get_chroma_client(chroma_path)
     collection = get_collection(client)
