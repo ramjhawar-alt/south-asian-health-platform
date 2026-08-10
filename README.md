@@ -25,6 +25,10 @@ Next.js frontend (Vercel)
       -> Hybrid retrieval (dense + BM25 + rerank)
           -> Groq LLM response generation with citations
               -> ChromaDB persistence + ingestion pipeline
+
+MCP server (backend/mcp_server.py)   ← same retrieval pipeline, no generation step
+  -> Claude Desktop / Claude Code / any MCP client
+      -> search_south_asian_health_literature(query) → evidence + citations
 ```
 
 ## Stack
@@ -76,6 +80,61 @@ Use **one** setup only (mixing them breaks `pnpm install`):
 **Do not** commit a root `vercel.json` with `pnpm install --dir frontend` while Root Directory is `frontend`: Vercel still reads that file from the repo root, and the command resolves to `frontend/frontend`, so install exits with **1**. Domains and preview URLs are unrelated.
 
 If pnpm still misbehaves, try removing **`ENABLE_EXPERIMENTAL_COREPACK`** from the Vercel project env (some community reports prefer the default Corepack path).
+
+### 3) MCP server (optional — for Claude Desktop / Claude Code)
+
+The MCP server exposes the same hybrid retrieval pipeline as a standalone tool any
+MCP client can call directly — no Next.js frontend or Groq generation step needed.
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Interactive inspector — opens a browser UI for testing queries
+mcp dev mcp_server.py
+
+# Or run directly (stdio transport — used by MCP clients like Claude Desktop)
+python mcp_server.py
+```
+
+**Option A — auto-install into Claude Desktop** (easiest):
+
+```bash
+cd backend && source venv/bin/activate
+mcp install mcp_server.py --env-file .env
+```
+
+This writes the config entry into
+`~/Library/Application Support/Claude/claude_desktop_config.json` automatically.
+Restart Claude Desktop after running it.
+
+**Option B — manual Claude Desktop config**
+(`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "south-asian-health": {
+      "command": "/absolute/path/to/backend/venv/bin/python",
+      "args": ["/absolute/path/to/backend/mcp_server.py"],
+      "env": {
+        "CHROMA_DB_PATH": "/absolute/path/to/data/chroma_db",
+        "GROQ_API_KEY": "your-groq-api-key",
+        "VOYAGE_API_KEY": "your-voyage-api-key"
+      }
+    }
+  }
+}
+```
+
+Replace the `/absolute/path/to/` placeholders with real paths on your machine
+(e.g. `/Users/yourname/south asian health/backend`). Restart Claude Desktop after saving.
+
+**Claude Code:** use the same config block, or `/mcp add` in the Claude Code CLI.
+
+The server exposes one tool: **`search_south_asian_health_literature(query, top_k=8)`**.
+The calling model receives verbatim evidence passages with citation metadata and does its
+own synthesis — no second LLM call, no Groq dependency in the retrieval path.
 
 ## Key docs
 

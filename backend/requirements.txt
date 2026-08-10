@@ -26,3 +26,6 @@ numpy>=1.26.0
 
 # Scheduler (KB auto-build)
 apscheduler>=3.10.0
+
+# MCP server (exposes retrieval as a tool for Claude Desktop / Claude Code)
+mcp[cli]>=2.0.0
