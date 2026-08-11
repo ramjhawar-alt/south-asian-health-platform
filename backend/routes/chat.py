@@ -1,13 +1,21 @@
 """
 Chat API route: RAG-powered Q&A with streaming and citation output.
 Uses Groq for LLM and local deterministic embeddings.
+
+When local corpus retrieval returns low confidence (top rerank score < 0.35),
+the endpoint acts as an MCP client, connecting to mcp_pubmed_server.py to
+fetch live PubMed results and fold them into the context before generation.
 """
+import asyncio
 import json
 import os
+import sys
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from groq import AsyncGroq
+from mcp import ClientSession, StdioServerParameters, stdio_client
 from pydantic import BaseModel
 
 from rag.llm import stream_answer
@@ -54,6 +62,113 @@ def get_chroma_path() -> str:
     return os.getenv("CHROMA_DB_PATH", "../data/chroma_db")
 
 
+_MCP_PUBMED_SERVER = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "mcp_pubmed_server.py")
+)
+_LIVE_SEARCH_LOG = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "live_search_log.jsonl")
+)
+
+
+async def _call_pubmed_mcp(query: str, max_results: int = 4) -> list[dict]:
+    """Connect to mcp_pubmed_server.py as an MCP client and run live_pubmed_search.
+
+    Spawns the server as a subprocess via stdio transport. Total budget is 15s
+    (subprocess startup ~1-2s + PubMed API call ~1-3s). Returns [] on any failure
+    so callers always degrade gracefully.
+
+    mcp's get_default_environment() strips most env vars for security, so we
+    pass the ones the server actually needs: ENTREZ_EMAIL plus SSL cert vars
+    that biopython's urllib relies on for HTTPS to NCBI.
+    """
+    _SSL_KEYS = {"SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+                 "CURL_CA_BUNDLE", "PYTHONPATH", "PYTHONHOME"}
+    _NEEDED = {"ENTREZ_EMAIL"} | _SSL_KEYS
+    passthrough = {k: v for k, v in os.environ.items() if k in _NEEDED}
+
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=[_MCP_PUBMED_SERVER],
+        env=passthrough,
+    )
+
+    async def _do() -> list[dict]:
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "live_pubmed_search",
+                    {"query": query, "max_results": max_results},
+                )
+                # mcp v2: structured tool results land in structured_content.result
+                sc = result.structured_content or {}
+                papers = sc.get("result", [])
+                if papers:
+                    return papers
+                # Fallback: older TextContent path
+                for content in result.content or []:
+                    text = getattr(content, "text", None)
+                    if text:
+                        return json.loads(text)
+        return []
+
+    try:
+        return await asyncio.wait_for(_do(), timeout=15.0)
+    except asyncio.TimeoutError:
+        print(f"[live_search] timed out for query: {query!r}")
+    except Exception as e:
+        print(f"[live_search] MCP call failed: {e}")
+    return []
+
+
+def _papers_to_hits(papers: list[dict]) -> list[dict]:
+    """Convert raw PubMed paper dicts to the hit format expected by format_context()."""
+    hits = []
+    for p in papers:
+        abstract = (p.get("abstract") or "").strip()
+        if not abstract:
+            continue
+        hits.append({
+            "text": abstract[:1200],
+            "meta": {
+                "title": (p.get("title") or "")[:500],
+                "authors": (p.get("authors") or "")[:200],
+                "year": p.get("year", ""),
+                "source": "PubMed",
+                "doi": p.get("doi", ""),
+                "pmid": p.get("pmid", ""),
+                "evidence_level": "live_search",
+                "pub_types": p.get("evidence_level", ""),
+                "has_figures": False,
+                "figures_dir": "",
+            },
+            "score": 0.5,
+            "collection": "live_search",
+        })
+    return hits
+
+
+def _log_live_search(query: str, papers: list[dict]) -> None:
+    """Append to the live search log — signals which topics are thin in the corpus.
+
+    The KB-build job can read this log to prioritise topics for the next
+    ingestion run. Format: one JSON object per line.
+    """
+    try:
+        os.makedirs(os.path.dirname(_LIVE_SEARCH_LOG), exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "query": query,
+            "results_found": len(papers),
+            "pmids": [p.get("pmid", "") for p in papers if p.get("pmid")],
+            "titles": [p.get("title", "")[:100] for p in papers],
+        }
+        with open(_LIVE_SEARCH_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"[live_search] log write failed: {e}")
+
+
 @router.post("/chat")
 async def chat_stream(request: ChatRequest):
     """
@@ -84,19 +199,39 @@ async def chat_stream(request: ChatRequest):
         try:
             yield f"data: {json.dumps({'type': 'retrieval_info', 'info': info})}\n\n"
 
+            # ── Live PubMed fallback ──────────────────────────────────────────
+            # When local corpus confidence is low, reach out to PubMed for fresh
+            # results and fold up to 4 papers into the context before generation.
+            active_context = context
+            active_citations = citations
+            live_fired = False
+
+            if low_confidence:
+                yield f"data: {json.dumps({'type': 'live_search', 'status': 'started'})}\n\n"
+                live_papers = await _call_pubmed_mcp(retrieve_query, max_results=4)
+                if live_papers:
+                    live_hits = _papers_to_hits(live_papers)
+                    _log_live_search(retrieve_query, live_papers)
+                    active_context, active_citations = format_context(hits + live_hits)
+                    live_fired = True
+                    yield f"data: {json.dumps({'type': 'live_search', 'status': 'done', 'count': len(live_hits)})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'live_search', 'status': 'no_results'})}\n\n"
+            # ─────────────────────────────────────────────────────────────────
+
             full_answer = ""
             async for token in stream_answer(
-                context=context,
+                context=active_context,
                 question=request.question,
                 async_groq_client=groq_async,
                 conversation_history=history,
-                low_confidence=low_confidence,
+                low_confidence=low_confidence and not live_fired,
                 user_context=request.user_context,
             ):
                 full_answer += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
+            yield f"data: {json.dumps({'type': 'citations', 'citations': active_citations})}\n\n"
 
             # Generate 3 follow-up question chips
             try:

@@ -40,6 +40,7 @@ EVIDENCE_BOOSTS = {
     "review": 1.10,
     "knowledge_base": 1.40,  # pre-synthesized wiki pages are high-quality
     "primary": 1.00,
+    "live_search": 0.85,  # freshly fetched from PubMed; unreviewed, below primary
 }
 
 LOW_CONFIDENCE_THRESHOLD = 0.35
@@ -373,12 +374,16 @@ def format_context(hits: list[dict]) -> tuple[str, list[dict]]:
             "review": "Review",
             "primary": "Primary Study",
             "knowledge_base": "Synthesized Evidence",
+            "live_search": "Live Search (unreviewed)",
         }
 
         # Knowledge base pages get their own label
         if hit.get("collection") == "kb" or source == "Knowledge Base":
             evidence_label = "Synthesized Evidence"
             evidence_level = "knowledge_base"
+        elif hit.get("collection") == "live_search" or evidence_level == "live_search":
+            evidence_label = "Live Search (unreviewed)"
+            evidence_level = "live_search"
         else:
             evidence_label = evidence_label_map.get(evidence_level, "Primary Study")
 

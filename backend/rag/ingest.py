@@ -23,6 +23,8 @@ from Bio import Entrez
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from semanticscholar import SemanticScholar
 
+from .pubmed_fetch import classify_evidence, fetch_pubmed_single_query
+
 SOUTH_ASIAN_HEALTH_QUERIES = [
     # Metabolic & Endocrine
     "South Asian type 2 diabetes BMI",
@@ -261,31 +263,9 @@ def chunk_text(text: str) -> list[str]:
     return splitter.split_text(text)
 
 
-# Publication types considered highest-evidence for clinical questions.
-HIGH_EVIDENCE_PUB_TYPES = {
-    "Meta-Analysis",
-    "Systematic Review",
-    "Practice Guideline",
-    "Guideline",
-    "Consensus Development Conference",
-    "Consensus Development Conference, NIH",
-    "Review",
-}
-
-
-def _classify_evidence(pub_types: list[str]) -> str:
-    """Classify a paper's evidence strength based on publication types."""
-    pt_set = set(pub_types)
-    if pt_set & {"Meta-Analysis", "Systematic Review"}:
-        return "meta_analysis"
-    if pt_set & {"Practice Guideline", "Guideline", "Consensus Development Conference",
-                 "Consensus Development Conference, NIH"}:
-        return "guideline"
-    if "Randomized Controlled Trial" in pt_set:
-        return "rct"
-    if "Review" in pt_set:
-        return "review"
-    return "primary"
+# Re-exported for any existing callers that import from this module directly.
+# The canonical definitions live in rag.pubmed_fetch.
+_classify_evidence = classify_evidence
 
 
 def fetch_pubmed_papers(
@@ -295,112 +275,24 @@ def fetch_pubmed_papers(
     high_evidence_only: bool = False,
     min_date: Optional[str] = None,
 ) -> list[dict]:
-    """Fetch PubMed papers. When `high_evidence_only=True`, results are
-    restricted to meta-analyses, systematic reviews, and guidelines.
+    """Fetch PubMed papers across multiple queries, deduplicating by PMID.
 
-    Args:
-        min_date: If set, only fetch papers published on or after this date.
-                  Format: YYYY/MM/DD (e.g. "2025/01/01"). Used for incremental runs.
+    Per-query fetch logic lives in rag.pubmed_fetch.fetch_pubmed_single_query.
     """
-    Entrez.email = email
     papers = []
     seen_pmids: set[str] = set()
 
     for query in queries:
-        try:
-            if high_evidence_only:
-                search_term = (
-                    f'({query}) AND ("meta-analysis"[pt] OR "systematic review"[pt] '
-                    f'OR "practice guideline"[pt] OR "guideline"[pt])'
-                )
-            else:
-                search_term = query
-
-            search_kwargs: dict = dict(db="pubmed", term=search_term, retmax=max_per_query, sort="relevance")
-            if min_date:
-                search_kwargs["mindate"] = min_date
-                search_kwargs["datetype"] = "pdat"
-            handle = Entrez.esearch(**search_kwargs)
-            record = Entrez.read(handle)
-            handle.close()
-            pmids = record.get("IdList", [])
-
-            new_pmids = [p for p in pmids if p not in seen_pmids]
-            if not new_pmids:
-                continue
-            seen_pmids.update(new_pmids)
-
-            fetch_handle = Entrez.efetch(
-                db="pubmed", id=",".join(new_pmids), rettype="xml", retmode="xml"
-            )
-            fetch_record = Entrez.read(fetch_handle)
-            fetch_handle.close()
-
-            for article in fetch_record.get("PubmedArticle", []):
-                try:
-                    medline = article["MedlineCitation"]
-                    art = medline["Article"]
-                    title = str(art.get("ArticleTitle", ""))
-                    abstract_list = art.get("Abstract", {}).get("AbstractText", [])
-                    if isinstance(abstract_list, list):
-                        abstract = " ".join(str(a) for a in abstract_list)
-                    else:
-                        abstract = str(abstract_list)
-
-                    if not abstract.strip():
-                        continue
-
-                    pmid = str(medline["PMID"])
-                    pub_date = art.get("Journal", {}).get("JournalIssue", {}).get("PubDate", {})
-                    year = str(pub_date.get("Year", pub_date.get("MedlineDate", "")[:4]))
-
-                    pub_types = [str(pt) for pt in art.get("PublicationTypeList", [])]
-                    evidence_level = _classify_evidence(pub_types)
-
-                    authors_list = art.get("AuthorList", [])
-                    authors = []
-                    for a in authors_list[:3]:
-                        last = a.get("LastName", "")
-                        fore = a.get("ForeName", "")
-                        if last:
-                            authors.append(f"{last} {fore}".strip())
-                    if len(art.get("AuthorList", [])) > 3:
-                        authors.append("et al.")
-
-                    # Extract DOI from PubmedData.ArticleIdList
-                    doi = ""
-                    for art_id in article.get("PubmedData", {}).get("ArticleIdList", []):
-                        try:
-                            if art_id.attributes.get("IdType") == "doi":
-                                doi = str(art_id).strip()
-                                break
-                        except AttributeError:
-                            pass
-                    # Fallback: check Article.ELocationID
-                    if not doi:
-                        for loc in art.get("ELocationID", []):
-                            try:
-                                if loc.attributes.get("EIdType") == "doi":
-                                    doi = str(loc).strip()
-                                    break
-                            except AttributeError:
-                                pass
-
-                    papers.append({
-                        "pmid": pmid,
-                        "title": title,
-                        "abstract": abstract,
-                        "authors": ", ".join(authors),
-                        "year": year,
-                        "source": "PubMed",
-                        "doi": doi,
-                        "evidence_level": evidence_level,
-                        "pub_types": ", ".join(pub_types),
-                    })
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"PubMed query failed for '{query}': {e}")
+        results = fetch_pubmed_single_query(
+            query, email,
+            max_results=max_per_query,
+            high_evidence_only=high_evidence_only,
+            min_date=min_date,
+        )
+        for p in results:
+            if p["pmid"] not in seen_pmids:
+                seen_pmids.add(p["pmid"])
+                papers.append(p)
 
     return papers
 
