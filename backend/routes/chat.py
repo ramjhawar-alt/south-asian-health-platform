@@ -248,7 +248,7 @@ async def chat_stream(request: ChatRequest):
                         f"Question: {request.question}\nAnswer summary: {full_answer[:600]}"
                     )
                 followup_resp = await groq_async.chat.completions.create(
-                    model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                    model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
                     messages=[
                         {
                             "role": "system",

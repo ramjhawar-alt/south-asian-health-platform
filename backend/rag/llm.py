@@ -1,6 +1,6 @@
 """
 Groq LLM RAG chain with South Asian health system prompt and citation output.
-Uses llama-3.3-70b-versatile via Groq's free API tier.
+Uses openai/gpt-oss-120b via Groq.
 Supports streaming response generation.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import AsyncIterator, Optional
 
 from groq import AsyncGroq, Groq
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 SYSTEM_PROMPT = """You are a specialized South Asian health assistant grounded strictly in peer-reviewed scientific research and clinical guidelines. Your role is to answer questions about health topics that are particularly relevant to South Asian populations (people with ancestry from India, Pakistan, Bangladesh, Sri Lanka, Nepal, Bhutan, Maldives, and neighboring regions).
 
