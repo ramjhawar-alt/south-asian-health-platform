@@ -1034,7 +1034,7 @@ export function AssessmentApp() {
               </button>
             )}
             {step < TOTAL_STEPS - 1 ? (
-              <button onClick={() => setStep((s) => s + 1)} className="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-semibold hover:bg-[var(--primary-hover)] transition-colors">
+              <button onClick={goNext} className="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-semibold hover:bg-[var(--primary-hover)] transition-colors">
                 Continue →
               </button>
             ) : (

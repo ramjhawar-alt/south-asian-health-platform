@@ -3,10 +3,6 @@
   "installCommand": "pnpm install",
   "rewrites": [
     {
-      "source": "/api/chat",
-      "destination": "https://south-asian-health-backend.onrender.com/api/chat"
-    },
-    {
       "source": "/api/ingest/:path*",
       "destination": "https://south-asian-health-backend.onrender.com/api/ingest/:path*"
     },
