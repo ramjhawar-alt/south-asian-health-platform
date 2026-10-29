@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { href: "/chat", label: "Research Q&A" },
-  { href: "/assess", label: "Risk Assessment" },
+  { href: "/assess", label: "Risk Assessment (soon)" },
   { href: "/simulate", label: "Simulator" },
   { href: "/conditions", label: "Conditions" },
   { href: "/resources", label: "Resources" },
